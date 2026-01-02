@@ -1,0 +1,35 @@
+{
+  "name": "smtp-loadbalancer",
+  "version": "1.0.0",
+  "description": "SMTP load balancer that distributes emails across multiple upstream SMTP providers",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "keywords": [
+    "smtp",
+    "load-balancer",
+    "email",
+    "mail-server"
+  ],
+  "author": "ovosimpatico",
+  "license": "AGPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ovosimpatico/smtp-loadbalancer"
+  },
+  "bugs": {
+    "url": "https://github.com/ovosimpatico/smtp-loadbalancer/issues"
+  },
+  "dependencies": {
+    "better-queue": "^3.8.12",
+    "better-queue-sqlite": "^1.0.4",
+    "dotenv": "^16.3.1",
+    "mailparser": "^3.6.5",
+    "nodemailer": "^7.0.12",
+    "smtp-server": "^3.13.4",
+    "winston": "^3.11.0"
+  }
+}

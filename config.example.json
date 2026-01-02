@@ -1,0 +1,48 @@
+{
+  "server": {
+    "port": 2525,
+    "auth": {
+      "user": "admin",
+      "pass": "your-secure-password"
+    }
+  },
+  "providers": [
+    {
+      "name": "Gmail",
+      "host": "smtp.gmail.com",
+      "port": 587,
+      "secure": false,
+      "auth": {
+        "user": "your-email@gmail.com",
+        "pass": "your-app-password"
+      },
+      "from": "your-email@gmail.com"
+    },
+    {
+      "name": "SendGrid",
+      "host": "smtp.sendgrid.net",
+      "port": 587,
+      "secure": false,
+      "auth": {
+        "user": "apikey",
+        "pass": "your-sendgrid-api-key"
+      },
+      "from": "noreply@yourdomain.com"
+    },
+    {
+      "name": "Mailgun",
+      "host": "smtp.mailgun.org",
+      "port": 587,
+      "secure": false,
+      "auth": {
+        "user": "postmaster@your-domain.mailgun.org",
+        "pass": "your-mailgun-password"
+      },
+      "from": "noreply@yourdomain.com"
+    }
+  ],
+  "queue": {
+    "maxRetries": 5,
+    "retryDelay": 60000
+  }
+}

@@ -10,8 +10,8 @@
     {
       "name": "Gmail",
       "host": "smtp.gmail.com",
-      "port": 587,
-      "secure": false,
+      "port": 465,
+      "secure": true,
       "auth": {
         "user": "your-email@gmail.com",
         "pass": "your-app-password"
@@ -30,15 +30,15 @@
       "from": "noreply@yourdomain.com"
     },
     {
-      "name": "Mailgun",
-      "host": "smtp.mailgun.org",
-      "port": 587,
-      "secure": false,
+      "name": "Outlook",
+      "host": "smtp.office365.com",
+      "port": 465,
+      "secure": true,
       "auth": {
-        "user": "postmaster@your-domain.mailgun.org",
-        "pass": "your-mailgun-password"
+        "user": "your-email@outlook.com",
+        "pass": "your-password"
       },
-      "from": "noreply@yourdomain.com"
+      "from": "your-email@outlook.com"
     }
   ],
   "queue": {

@@ -119,7 +119,8 @@ export class IncomingSMTPServer {
           content: att.content,
           contentType: att.contentType,
           contentDisposition: att.contentDisposition,
-          size: att.size,
+          contentId: att.contentId,
+          encoding: 'base64',
         })) || [],
         messageId: parsed.messageId,
         date: parsed.date,
@@ -133,6 +134,20 @@ export class IncomingSMTPServer {
 
       if (!emailData.envelope.to || emailData.envelope.to.length === 0) {
         throw new Error('Missing recipient address');
+      }
+
+      // Check for email loops (sender sending to themselves)
+      const loopRecipients = emailData.envelope.to.filter(
+        (recipient) => recipient.toLowerCase() === emailData.envelope.from.toLowerCase()
+      );
+
+      if (loopRecipients.length > 0) {
+        this.logger.warn('Email loop detected - dropping email', {
+          from: emailData.envelope.from,
+          to: emailData.envelope.to,
+          loopRecipients,
+        });
+        throw new Error('Email loop detected: sender cannot send to themselves');
       }
 
       this.logger.debug('Email parsed successfully', {

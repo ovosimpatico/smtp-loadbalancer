@@ -50,6 +50,24 @@ export class SMTPClient {
     const transport = this.getTransport(provider);
 
     try {
+      // Validate and sanitize attachments
+      const sanitizedAttachments = (emailData.attachments || []).map((att) => {
+        // Ensure content is a Buffer or string
+        if (att.content && typeof att.content === 'object' && !Buffer.isBuffer(att.content)) {
+          this.logger.warn('Invalid attachment content type, skipping', {
+            filename: att.filename,
+            type: typeof att.content,
+          });
+          return null;
+        }
+        return {
+          filename: att.filename || 'attachment',
+          content: att.content,
+          contentType: att.contentType || 'application/octet-stream',
+          encoding: att.encoding || 'base64',
+        };
+      }).filter(Boolean); // Remove null entries
+
       // Prepare email
       const mailOptions = {
         from: provider.from,
@@ -58,7 +76,7 @@ export class SMTPClient {
         text: emailData.text,
         html: emailData.html,
         headers: emailData.headers || {},
-        attachments: emailData.attachments || [],
+        attachments: sanitizedAttachments,
 
         // Reply-to original sender
         replyTo: emailData.envelope.from,

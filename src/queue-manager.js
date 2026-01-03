@@ -40,13 +40,39 @@ export class QueueManager {
       {
         store: new SQLiteStore({
           path: this.dbPath,
-          // Store email
-          serialize: (data) => JSON.stringify(data),
-          deserialize: (text) => JSON.parse(text),
+          // Buffer handling
+          serialize: (data) => {
+            // Convert attachment buffers to base64
+            const serializable = { ...data };
+            if (serializable.attachments) {
+              serializable.attachments = serializable.attachments.map((att) => ({
+                ...att,
+                content: att.content && Buffer.isBuffer(att.content)
+                  ? att.content.toString('base64')
+                  : att.content,
+                _isBuffer: Buffer.isBuffer(att.content),
+              }));
+            }
+            return JSON.stringify(serializable);
+          },
+          deserialize: (text) => {
+            const data = JSON.parse(text);
+            // Convert base64 back to Buffers
+            if (data.attachments) {
+              data.attachments = data.attachments.map((att) => ({
+                ...att,
+                content: att._isBuffer && typeof att.content === 'string'
+                  ? Buffer.from(att.content, 'base64')
+                  : att.content,
+              }));
+              // Clean up
+              data.attachments.forEach((att) => delete att._isBuffer);
+            }
+            return data;
+          },
         }),
-        // Retry
+        // Retry configuration
         maxRetries: queueConfig.maxRetries,
-        retryDelay: queueConfig.retryDelay,
         concurrent: 1,
         // Retry exponential backoff
         afterProcessDelay: 100,

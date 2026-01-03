@@ -110,6 +110,8 @@ export class IncomingSMTPServer {
           to: session.envelope.rcptTo?.map((r) => r.address) ||
               parsed.to?.value.map((t) => t.address) || [],
         },
+        // Preserve sender display name if it exists
+        fromName: parsed.from?.value[0]?.name || parsed.from?.text || null,
         subject: parsed.subject,
         text: parsed.text,
         html: parsed.html,

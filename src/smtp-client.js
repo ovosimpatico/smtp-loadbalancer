@@ -68,9 +68,16 @@ export class SMTPClient {
         };
       }).filter(Boolean); // Remove null entries
 
+      // FROM field with display name if available
+      let fromField = provider.from;
+      if (emailData.fromName) {
+        // Format as "Display Name <email@address.com>"
+        fromField = `${emailData.fromName} <${provider.from}>`;
+      }
+
       // Prepare email
       const mailOptions = {
-        from: provider.from,
+        from: fromField,
         to: emailData.envelope.to,
         subject: emailData.subject || '(No Subject)',
         text: emailData.text,

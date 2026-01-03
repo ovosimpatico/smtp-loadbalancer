@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+
+# Logs
+logs/
+*.log
+
+# Data
+data/
+
+# Configuration
+config.json
+.env
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+docs/
+README.md
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# CI/CD
+.github/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

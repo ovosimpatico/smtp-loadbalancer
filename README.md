@@ -44,24 +44,27 @@ For deployment:
 
 ## Installation
 
-TODO: Docker support
-### Using Docker (Recommended) TODO
+### Using Docker (Recommended)
 
-1.  Clone the repository:
+1.  Create a directory for your configuration:
     ```bash
-    git clone https://github.com/ovosimpatico/smtp-loadbalancer.git
-    cd smtp-loadbalancer
+    mkdir smtp-loadbalancer && cd smtp-loadbalancer
     ```
-2.  Make your `config.json` file based on the [example file](config.example.json)
+2.  Download the example configuration and docker-compose file:
+    ```bash
+    curl -O https://raw.githubusercontent.com/ovosimpatico/smtp-loadbalancer/main/config.example.json
+    curl -O https://raw.githubusercontent.com/ovosimpatico/smtp-loadbalancer/main/docker-compose.yml
+    ```
+3.  Create your `config.json` file:
     ```bash
     cp config.example.json config.json
     nano config.json
     ```
-3.  Run the application:
+4.  Run the application:
     ```bash
     docker compose up -d
     ```
-4.  The SMTP server will be listening on port `2525`.
+5.  The SMTP server will be listening on port `2525`.
 
 ### Native Node.js Installation
 

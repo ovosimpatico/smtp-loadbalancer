@@ -42,7 +42,14 @@ export class GenericStatsProvider extends BaseStatsProvider {
         ...counter,
       };
     }
-    return stats;
+
+    // Sort alphabetically by key
+    return Object.keys(stats)
+      .sort()
+      .reduce((sorted, key) => {
+        sorted[key] = stats[key];
+        return sorted;
+      }, {});
   }
 
   getBestProvider() {

@@ -4,10 +4,15 @@ import { BaseStatsProvider } from "./base-provider.js";
 /**
  * SMTP2GO stats provider that polls the SMTP2GO API for usage metrics.
  * Implements smart load balancing based on remaining email quota.
+ * Tracks daily sent emails locally (SMTP2GO free accounts: 200/day limit).
  */
 export class Smtp2goStatsProvider extends BaseStatsProvider {
   constructor(config, logger) {
     super(config, logger);
+
+    // SMTP2GO free account limits
+    this.DAILY_LIMIT = 200; // emails per day
+    this.CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
     // Cache for SMTP2GO API data
     this.cache = {
@@ -15,10 +20,14 @@ export class Smtp2goStatsProvider extends BaseStatsProvider {
       data: {}, // providerName -> stats
     };
 
-    this.CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+    // Daily counters (reset at midnight)
+    this.dailyCounters = new Map();
+    this.currentDate = this._getCurrentDate();
 
-    // Validate that all providers have API keys
+    // Initialize daily counters
     config.providers.forEach((p) => {
+      this.dailyCounters.set(p.name, 0);
+
       if (!p.api_key) {
         throw new Error(
           `Provider "${p.name}" missing "api_key" (required for smtp2go mode)`,
@@ -27,22 +36,46 @@ export class Smtp2goStatsProvider extends BaseStatsProvider {
     });
   }
 
+  _getCurrentDate() {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  }
+
+  _checkAndResetDailyCounters() {
+    const today = this._getCurrentDate();
+    if (today !== this.currentDate) {
+      this.logger.info("Daily counters reset", { date: today });
+      this.currentDate = today;
+      // Reset all counters
+      for (const [providerName] of this.dailyCounters) {
+        this.dailyCounters.set(providerName, 0);
+      }
+    }
+  }
+
   incrementSent(providerName) {
-    // SMTP2GO mode relies on API data, but we can track this for fallback
-    // (keeping it minimal since API is source of truth)
+    this._checkAndResetDailyCounters();
+    const current = this.dailyCounters.get(providerName) || 0;
+    this.dailyCounters.set(providerName, current + 1);
+    this.logger.debug(
+      `Daily counter for ${providerName}: ${current + 1}/${this.DAILY_LIMIT}`,
+    );
   }
 
   incrementError(providerName) {
-    // SMTP2GO mode relies on API data
+    // Errors don't count towards daily limit
   }
 
   async getStats() {
+    this._checkAndResetDailyCounters();
+
     const now = Date.now();
     if (
       now - this.cache.timestamp < this.CACHE_TTL &&
       Object.keys(this.cache.data).length > 0
     ) {
-      return this.cache.data;
+      // Return cached data with current daily counters
+      return this._addDailyCountersToStats(this.cache.data);
     }
 
     this.logger.info("Refreshing SMTP2GO stats...");
@@ -68,10 +101,35 @@ export class Smtp2goStatsProvider extends BaseStatsProvider {
 
     await Promise.all(promises);
 
-    this.cache.data = stats;
+    // Sort alphabetically by key
+    const sortedStats = Object.keys(stats)
+      .sort()
+      .reduce((sorted, key) => {
+        sorted[key] = stats[key];
+        return sorted;
+      }, {});
+
+    this.cache.data = sortedStats;
     this.cache.timestamp = now;
 
-    return stats;
+    return this._addDailyCountersToStats(sortedStats);
+  }
+
+  _addDailyCountersToStats(stats) {
+    const result = {};
+    for (const [name, data] of Object.entries(stats)) {
+      const dailySent = this.dailyCounters.get(name) || 0;
+      const dailyRemaining = Math.max(0, this.DAILY_LIMIT - dailySent);
+
+      result[name] = {
+        ...data,
+        daily_sent: dailySent,
+        daily_limit: this.DAILY_LIMIT,
+        daily_remaining: dailyRemaining,
+        daily_percent: (dailySent / this.DAILY_LIMIT) * 100,
+      };
+    }
+    return result;
   }
 
   async _fetchProviderStats(apiKey) {
@@ -106,22 +164,59 @@ export class Smtp2goStatsProvider extends BaseStatsProvider {
   }
 
   getBestProvider() {
-    // Find provider with most remaining emails
+    this._checkAndResetDailyCounters();
+
+    // Find provider with most EFFECTIVE remaining (min of daily and monthly)
     let bestProvider = null;
-    let maxRemaining = -1;
+    let maxEffectiveRemaining = -1;
 
     for (const [name, data] of Object.entries(this.cache.data)) {
       if (data.error) continue;
 
-      // Check cycle_remaining
-      if (typeof data.cycle_remaining === "number") {
-        if (data.cycle_remaining > maxRemaining) {
-          maxRemaining = data.cycle_remaining;
-          bestProvider = name;
-        }
+      const dailySent = this.dailyCounters.get(name) || 0;
+      const dailyRemaining = Math.max(0, this.DAILY_LIMIT - dailySent);
+      const monthlyRemaining = data.cycle_remaining || 0;
+
+      // Effective remaining is the minimum of daily and monthly
+      const effectiveRemaining = Math.min(dailyRemaining, monthlyRemaining);
+
+      // Skip providers that have hit their daily limit
+      if (dailyRemaining === 0) continue;
+
+      if (effectiveRemaining > maxEffectiveRemaining) {
+        maxEffectiveRemaining = effectiveRemaining;
+        bestProvider = name;
       }
     }
 
     return bestProvider;
+  }
+
+  getProvidersSortedByQuota() {
+    this._checkAndResetDailyCounters();
+
+    // Return providers sorted by EFFECTIVE remaining quota (descending)
+    const providers = [];
+
+    for (const [name, data] of Object.entries(this.cache.data)) {
+      if (data.error) continue;
+
+      const dailySent = this.dailyCounters.get(name) || 0;
+      const dailyRemaining = Math.max(0, this.DAILY_LIMIT - dailySent);
+      const monthlyRemaining = data.cycle_remaining || 0;
+
+      // Effective remaining is the minimum of daily and monthly
+      const effectiveRemaining = Math.min(dailyRemaining, monthlyRemaining);
+
+      // Skip providers that have hit their daily limit
+      if (dailyRemaining > 0) {
+        providers.push({ name, remaining: effectiveRemaining });
+      }
+    }
+
+    // Sort by effective remaining quota descending
+    providers.sort((a, b) => b.remaining - a.remaining);
+
+    return providers.map((p) => p.name);
   }
 }

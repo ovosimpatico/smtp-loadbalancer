@@ -118,6 +118,7 @@ class SMTPLoadBalancer {
       this.apiServer = new ApiServer(
         this.config,
         this.statsManager,
+        this.loadBalancer,
         this.logger,
       );
       this.apiServer.start();

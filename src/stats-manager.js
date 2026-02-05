@@ -45,4 +45,12 @@ export class StatsManager {
   getBestProvider() {
     return this.provider.getBestProvider();
   }
+
+  getProvidersSortedByQuota() {
+    if (typeof this.provider.getProvidersSortedByQuota === "function") {
+      return this.provider.getProvidersSortedByQuota();
+    }
+    // Fallback: return all providers in alphabetical order
+    return this.config.providers.map((p) => p.name).sort();
+  }
 }

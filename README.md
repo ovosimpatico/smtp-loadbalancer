@@ -114,6 +114,20 @@ Once integrated, you can use the SMTP Load Balancer as your primary email server
 
 **Note:** Since the FROM address will already be set for each provider, the FROM field on your sent emails will be rewritten to the REPLY-TO address, to ensure replies are sent to the correct address.
 
+## Provider-specific modes
+
+### Generic mode
+
+This mode generates local metrics and allows you to use any SMTP provider, as well as mix and match providers.
+
+### SMTP2GO mode
+
+This mode uses the SMTP2GO API to fetch usage metrics and allows you to use SMTP2GO as your primary email provider. For this mode to work, you need to provide an API key for each account.
+
+All API keys must have the following permissions (set in SMTP2GO dashboard):
+- Statistics
+- Activity
+
 ## License
 
 This project is licensed under the **GNU Affero General Public License v3.0 (AGPLv3)**. This means that you are free to use, modify and distribute the software, so as long as you release the source code of your fork to all users, even when interacting with it over a network.

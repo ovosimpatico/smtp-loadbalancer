@@ -1,4 +1,5 @@
 {
+  "mode": "generic",
   "server": {
     "port": 2525,
     "auth": {
@@ -9,6 +10,7 @@
   "providers": [
     {
       "name": "Gmail",
+      "api_key": "",
       "host": "smtp.gmail.com",
       "port": 465,
       "secure": true,
@@ -20,6 +22,7 @@
     },
     {
       "name": "SendGrid",
+      "api_key": "",
       "host": "smtp.sendgrid.net",
       "port": 587,
       "secure": false,
@@ -31,6 +34,7 @@
     },
     {
       "name": "Outlook",
+      "api_key": "",
       "host": "smtp.office365.com",
       "port": 465,
       "secure": true,

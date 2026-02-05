@@ -1,13 +1,15 @@
-import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import fs from 'fs';
-import { loadConfig } from './config-loader.js';
-import { LoadBalancer } from './load-balancer.js';
-import { QueueManager } from './queue-manager.js';
-import { SMTPClient } from './smtp-client.js';
-import { IncomingSMTPServer } from './smtp-server.js';
-import { createLogger } from './logger.js';
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
+import fs from "fs";
+import { loadConfig } from "./config-loader.js";
+import { LoadBalancer } from "./load-balancer.js";
+import { QueueManager } from "./queue-manager.js";
+import { SMTPClient } from "./smtp-client.js";
+import { IncomingSMTPServer } from "./smtp-server.js";
+import { StatsManager } from "./stats-manager.js";
+import { ApiServer } from "./api-server.js";
+import { createLogger } from "./logger.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,51 +24,58 @@ class SMTPLoadBalancer {
     this.smtpClient = null;
     this.queueManager = null;
     this.smtpServer = null;
+    this.statsManager = null;
+    this.apiServer = null;
     this.isShuttingDown = false;
   }
 
   async init() {
     try {
       // Create logs dir
-      const logsDir = path.join(__dirname, '..', 'logs');
+      const logsDir = path.join(__dirname, "..", "logs");
       if (!fs.existsSync(logsDir)) {
         fs.mkdirSync(logsDir, { recursive: true });
       }
 
       this.logger = createLogger();
-      this.logger.info('Starting...');
+      this.logger.info("Starting...");
 
       // Load config
       const configPath = process.env.CONFIG_PATH || null;
       this.config = loadConfig(configPath);
-      this.logger.info('Config OK', {
+      this.logger.info("Config OK", {
         providers: this.config.providers.length,
         serverPort: this.config.server.port,
         authEnabled: !!this.config.server.auth,
+        mode: this.config.mode || "generic",
       });
 
+      // Init Stats Manager
+      this.statsManager = new StatsManager(this.config, this.logger);
+
       // Init load balancer
-      this.loadBalancer = new LoadBalancer(this.config);
-      this.logger.info('Load balancer OK', {
-        strategy: 'round-robin',
+      this.loadBalancer = new LoadBalancer(this.config, this.statsManager);
+      this.logger.info("Load balancer OK", {
+        strategy:
+          this.config.mode === "smtp2go" ? "smart-balancing" : "round-robin",
         providers: this.loadBalancer.getProviderCount(),
       });
 
       // Init SMTP client
       this.smtpClient = new SMTPClient(this.loadBalancer, this.logger);
-      this.logger.info('SMTP client OK');
+      this.logger.info("SMTP client OK");
 
       // Verify providers
-      this.logger.info('Verifying providers');
+      this.logger.info("Verifying providers");
       const verificationResults = await this.smtpClient.verifyAllProviders();
       const failedProviders = Object.entries(verificationResults)
         .filter(([_, success]) => !success)
         .map(([name]) => name);
 
       if (failedProviders.length === this.config.providers.length) {
-        throw new Error('All providers failed');
+        throw new Error("All providers failed");
       } else if (failedProviders.length > 0) {
-        this.logger.warn('Some providers failed', {
+        this.logger.warn("Some providers failed", {
           failed: failedProviders,
         });
       }
@@ -74,34 +83,73 @@ class SMTPLoadBalancer {
       // Init queue manager
       this.queueManager = new QueueManager(
         this.config,
-        (emailData) => this.smtpClient.deliverEmail(emailData),
-        this.logger
+        async (emailData) => {
+          try {
+            const result = await this.smtpClient.deliverEmail(emailData);
+            if (result.success && result.provider) {
+              this.statsManager.incrementSent(result.provider);
+            }
+            return result;
+          } catch (error) {
+            if (error.provider) {
+              this.statsManager.incrementError(error.provider);
+            }
+            throw error;
+          }
+        },
+        this.logger,
       );
-      this.logger.info('Queue manager OK');
+      this.logger.info("Queue manager OK");
 
       // Start SMTP server
       this.smtpServer = new IncomingSMTPServer(
         this.config,
         this.queueManager,
-        this.logger
+        this.logger,
       );
       this.smtpServer.start();
 
-      this.logger.info('SMTP server OK', {
+      this.logger.info("SMTP server OK", {
         serverPort: this.config.server.port,
         providers: this.config.providers.map((p) => p.name),
       });
+
+      // Start API Server
+      this.apiServer = new ApiServer(
+        this.config,
+        this.statsManager,
+        this.logger,
+      );
+      this.apiServer.start();
+
+      // Setup Polling for SMTP2GO mode
+      if (this.config.mode === "smtp2go") {
+        const POLLING_INTERVAL = 5 * 60 * 1000; // 5 min
+        this.logger.info("Starting SMTP2GO stats polling...");
+        // Initial fetch
+        this.statsManager.getStats().catch((err) => {
+          this.logger.error("Initial stats fetch failed", {
+            error: err.message,
+          });
+        });
+
+        setInterval(() => {
+          this.statsManager.getStats().catch((err) => {
+            this.logger.error("Stats polling failed", { error: err.message });
+          });
+        }, POLLING_INTERVAL);
+      }
 
       // Shutdown handlers
       this.setupGracefulShutdown();
     } catch (error) {
       if (this.logger) {
-        this.logger.error('Failed to start', {
+        this.logger.error("Failed to start", {
           error: error.message,
           stack: error.stack,
         });
       } else {
-        console.error('Failed to start:', error);
+        console.error("Failed to start:", error);
       }
       process.exit(1);
     }
@@ -117,6 +165,11 @@ class SMTPLoadBalancer {
       this.logger.info(`Received ${signal}, shutting down`);
 
       try {
+        // Stop API Server
+        if (this.apiServer) {
+          this.apiServer.stop();
+        }
+
         // Stop SMTP server
         if (this.smtpServer) {
           await this.smtpServer.stop();
@@ -128,7 +181,7 @@ class SMTPLoadBalancer {
         }
 
         // Wait for in-flight emails
-        this.logger.info('Waiting for in-flight emails');
+        this.logger.info("Waiting for in-flight emails");
         await new Promise((resolve) => setTimeout(resolve, 5000));
 
         // Shutdown queue
@@ -141,10 +194,10 @@ class SMTPLoadBalancer {
           await this.smtpClient.closeAllTransports();
         }
 
-        this.logger.info('Shut down');
+        this.logger.info("Shut down");
         process.exit(0);
       } catch (error) {
-        this.logger.error('Error during shutdown:', {
+        this.logger.error("Error during shutdown:", {
           error: error.message,
         });
         process.exit(1);
@@ -152,21 +205,21 @@ class SMTPLoadBalancer {
     };
 
     // Handle signals
-    process.on('SIGTERM', () => shutdown('SIGTERM'));
-    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on("SIGTERM", () => shutdown("SIGTERM"));
+    process.on("SIGINT", () => shutdown("SIGINT"));
 
     // Handle exceptions
-    process.on('uncaughtException', (error) => {
-      this.logger.error('Exception:', {
+    process.on("uncaughtException", (error) => {
+      this.logger.error("Exception:", {
         error: error.message,
         stack: error.stack,
       });
-      shutdown('uncaughtException');
+      shutdown("uncaughtException");
     });
 
     // Handle promise rejections
-    process.on('unhandledRejection', (reason, promise) => {
-      this.logger.error('Promise rejection:', {
+    process.on("unhandledRejection", (reason, promise) => {
+      this.logger.error("Promise rejection:", {
         reason,
         promise,
       });
@@ -188,6 +241,6 @@ class SMTPLoadBalancer {
 // Start
 const app = new SMTPLoadBalancer();
 app.init().catch((error) => {
-  console.error('Fatal error:', error);
+  console.error("Fatal error:", error);
   process.exit(1);
 });

@@ -18,6 +18,7 @@ services:
       - CONFIG_PATH=/app/config/config.json
     ports:
       - "2525:2525"
+      - "8080:8080"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "2525"]

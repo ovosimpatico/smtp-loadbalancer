@@ -1,13 +1,12 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-
 export function loadConfig(configPath = null) {
-  const defaultPath = path.join(__dirname, '..', 'config.json');
+  const defaultPath = path.join(__dirname, "..", "config.json");
   const finalPath = configPath || defaultPath;
 
   // Check for file
@@ -18,7 +17,7 @@ export function loadConfig(configPath = null) {
   // Parse
   let config;
   try {
-    const configContent = fs.readFileSync(finalPath, 'utf8');
+    const configContent = fs.readFileSync(finalPath, "utf8");
     config = JSON.parse(configContent);
   } catch (error) {
     throw new Error(`Failed to parse: ${error.message}`);
@@ -35,12 +34,12 @@ function validateConfig(config) {
     throw new Error('Missing "server" section');
   }
 
-  if (!config.server.port || typeof config.server.port !== 'number') {
+  if (!config.server.port || typeof config.server.port !== "number") {
     throw new Error('Invalid "port" number');
   }
 
   if (config.server.port < 1 || config.server.port > 65535) {
-    throw new Error('Port must be between 1 and 65535');
+    throw new Error("Port must be between 1 and 65535");
   }
 
   if (config.server.auth) {
@@ -54,8 +53,14 @@ function validateConfig(config) {
   }
 
   if (config.providers.length === 0) {
-    throw new Error('At least one provider is required');
+    throw new Error("At least one provider is required");
   }
+
+  // Validate mode
+  if (config.mode && !["generic", "smtp2go"].includes(config.mode)) {
+    throw new Error('Invalid "mode". Must be "generic" or "smtp2go"');
+  }
+  const mode = config.mode || "generic";
 
   // Validate providers
   config.providers.forEach((provider) => {
@@ -67,16 +72,22 @@ function validateConfig(config) {
       throw new Error(`Provider "${provider.name}" missing "host" field`);
     }
 
-    if (!provider.port || typeof provider.port !== 'number') {
+    if (!provider.port || typeof provider.port !== "number") {
       throw new Error(`Provider "${provider.name}" missing "port" field`);
     }
 
-    if (typeof provider.secure !== 'boolean') {
+    if (typeof provider.secure !== "boolean") {
       throw new Error(`Provider "${provider.name}" missing "secure" field`);
     }
 
     if (!provider.auth || !provider.auth.user || !provider.auth.pass) {
       throw new Error(`Provider "${provider.name}" missing "auth" credentials`);
+    }
+
+    if (mode === "smtp2go" && !provider.api_key) {
+      throw new Error(
+        `Provider "${provider.name}" missing "api_key" (required for smtp2go mode)`,
+      );
     }
 
     if (!provider.from) {
@@ -94,11 +105,17 @@ function validateConfig(config) {
     throw new Error('Missing "queue" section');
   }
 
-  if (typeof config.queue.maxRetries !== 'number' || config.queue.maxRetries < 0) {
+  if (
+    typeof config.queue.maxRetries !== "number" ||
+    config.queue.maxRetries < 0
+  ) {
     throw new Error('Invalid "maxRetries" number');
   }
 
-  if (typeof config.queue.retryDelay !== 'number' || config.queue.retryDelay < 0) {
+  if (
+    typeof config.queue.retryDelay !== "number" ||
+    config.queue.retryDelay < 0
+  ) {
     throw new Error('Invalid "retryDelay" number');
   }
 }

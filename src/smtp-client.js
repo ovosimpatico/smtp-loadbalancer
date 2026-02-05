@@ -1,4 +1,4 @@
-import nodemailer from 'nodemailer';
+import nodemailer from "nodemailer";
 
 export class SMTPClient {
   constructor(loadBalancer, logger) {
@@ -41,32 +41,41 @@ export class SMTPClient {
     // Get next provider (round-robin)
     const provider = this.loadBalancer.getNextProvider();
 
-    this.logger.info(`Attempting to deliver email via provider: ${provider.name}`, {
-      from: emailData.envelope.from,
-      to: emailData.envelope.to,
-      subject: emailData.subject,
-    });
+    this.logger.info(
+      `Attempting to deliver email via provider: ${provider.name}`,
+      {
+        from: emailData.envelope.from,
+        to: emailData.envelope.to,
+        subject: emailData.subject,
+      },
+    );
 
     const transport = this.getTransport(provider);
 
     try {
       // Validate and sanitize attachments
-      const sanitizedAttachments = (emailData.attachments || []).map((att) => {
-        // Ensure content is a Buffer or string
-        if (att.content && typeof att.content === 'object' && !Buffer.isBuffer(att.content)) {
-          this.logger.warn('Invalid attachment content type, skipping', {
-            filename: att.filename,
-            type: typeof att.content,
-          });
-          return null;
-        }
-        return {
-          filename: att.filename || 'attachment',
-          content: att.content,
-          contentType: att.contentType || 'application/octet-stream',
-          encoding: att.encoding || 'base64',
-        };
-      }).filter(Boolean); // Remove null entries
+      const sanitizedAttachments = (emailData.attachments || [])
+        .map((att) => {
+          // Ensure content is a Buffer or string
+          if (
+            att.content &&
+            typeof att.content === "object" &&
+            !Buffer.isBuffer(att.content)
+          ) {
+            this.logger.warn("Invalid attachment content type, skipping", {
+              filename: att.filename,
+              type: typeof att.content,
+            });
+            return null;
+          }
+          return {
+            filename: att.filename || "attachment",
+            content: att.content,
+            contentType: att.contentType || "application/octet-stream",
+            encoding: att.encoding || "base64",
+          };
+        })
+        .filter(Boolean); // Remove null entries
 
       // FROM field with display name if available
       let fromField = provider.from;
@@ -79,7 +88,7 @@ export class SMTPClient {
       const mailOptions = {
         from: fromField,
         to: emailData.envelope.to,
-        subject: emailData.subject || '(No Subject)',
+        subject: emailData.subject || "(No Subject)",
         text: emailData.text,
         html: emailData.html,
         headers: emailData.headers || {},
@@ -114,9 +123,11 @@ export class SMTPClient {
       });
 
       // Re-throw error to trigger retry
-      throw new Error(
-        `Delivery failed via ${provider.name}: ${error.message}`
+      const wrappedError = new Error(
+        `Delivery failed via ${provider.name}: ${error.message}`,
       );
+      wrappedError.provider = provider.name;
+      throw wrappedError;
     }
   }
 
@@ -147,23 +158,25 @@ export class SMTPClient {
 
     const successCount = Object.values(results).filter((r) => r).length;
     this.logger.info(
-      `Provider verification complete: ${successCount}/${providers.length} successful`
+      `Provider verification complete: ${successCount}/${providers.length} successful`,
     );
 
     return results;
   }
 
   async closeAllTransports() {
-    this.logger.info('Closing all SMTP transports...');
+    this.logger.info("Closing all SMTP transports...");
 
     const closePromises = [];
     for (const [name, transport] of this.transportCache.entries()) {
-      if (transport && typeof transport.close === 'function') {
-        const closePromise = Promise.resolve(transport.close()).catch((error) => {
-          this.logger.warn(`Failed to close transport for ${name}`, {
-            error: error.message,
-          });
-        });
+      if (transport && typeof transport.close === "function") {
+        const closePromise = Promise.resolve(transport.close()).catch(
+          (error) => {
+            this.logger.warn(`Failed to close transport for ${name}`, {
+              error: error.message,
+            });
+          },
+        );
         closePromises.push(closePromise);
       }
     }
@@ -171,6 +184,6 @@ export class SMTPClient {
     await Promise.all(closePromises);
     this.transportCache.clear();
 
-    this.logger.info('All SMTP transports closed');
+    this.logger.info("All SMTP transports closed");
   }
 }

@@ -14,12 +14,13 @@ RUN npm ci --only=production
 
 # Copy application files
 COPY src/ ./src/
+COPY public/ ./public/
 
 # Create directories for logs and data
 RUN mkdir -p /app/logs /app/data
 
-# Expose SMTP port
-EXPOSE 2525
+# Expose SMTP and HTTP ports
+EXPOSE 2525 8080
 
 # Set environment variable for config path
 ENV CONFIG_PATH=/app/config/config.json

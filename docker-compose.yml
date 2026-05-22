@@ -7,22 +7,23 @@ services:
     #   dockerfile: Dockerfile
 
     volumes:
-      # Config file
       - ./config.json:/app/config/config.json:ro
       # Logs
       - ./logs:/app/logs
-      # Email queue DB
       - ./data:/app/data
+      # TLS certificates (uncomment if using server.tls)
+      # - ./certs:/app/certs:ro
     environment:
       - NODE_ENV=production
       - CONFIG_PATH=/app/config/config.json
     ports:
       - "2525:2525"
-      - "8080:8080"
+      # Dashboard/API — bind to localhost only unless you need remote access.
+      - "127.0.0.1:8080:8080"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "2525"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 15s

@@ -26,61 +26,62 @@ class SMTPLoadBalancer {
     this.smtpServer = null;
     this.statsManager = null;
     this.apiServer = null;
+    this.pollTimer = null;
     this.isShuttingDown = false;
   }
 
   async init() {
     try {
-      // Create logs dir
+      // Ensure logs directory exists before the logger opens files.
       const logsDir = path.join(__dirname, "..", "logs");
       if (!fs.existsSync(logsDir)) {
         fs.mkdirSync(logsDir, { recursive: true });
       }
 
-      this.logger = createLogger();
-      this.logger.info("Starting...");
-
-      // Load config
+      // Load config first so logger options can come from it.
       const configPath = process.env.CONFIG_PATH || null;
       this.config = loadConfig(configPath);
-      this.logger.info("Config OK", {
+
+      this.logger = createLogger({
+        logsDir,
+        redactPII: this.config.logging?.redactPII,
+      });
+      this.logger.info("Starting SMTP Load Balancer...");
+      this.logger.info("Config loaded", {
         providers: this.config.providers.length,
         serverPort: this.config.server.port,
         authEnabled: !!this.config.server.auth,
         mode: this.config.mode || "generic",
       });
 
-      // Init Stats Manager
+      // Stats manager + load balancer
       this.statsManager = new StatsManager(this.config, this.logger);
-
-      // Init load balancer
       this.loadBalancer = new LoadBalancer(this.config, this.statsManager);
-      this.logger.info("Load balancer OK", {
+      this.logger.info("Load balancer ready", {
         strategy:
-          this.config.mode === "smtp2go" ? "smart-balancing" : "round-robin",
+          this.config.mode === "smtp2go" ? "quota-aware" : "round-robin",
         providers: this.loadBalancer.getProviderCount(),
       });
 
-      // Init SMTP client
+      // SMTP client
       this.smtpClient = new SMTPClient(this.loadBalancer, this.logger);
-      this.logger.info("SMTP client OK");
 
-      // Verify providers
-      this.logger.info("Verifying providers");
+      // Verify providers (in parallel)
+      this.logger.info("Verifying providers...");
       const verificationResults = await this.smtpClient.verifyAllProviders();
       const failedProviders = Object.entries(verificationResults)
-        .filter(([_, success]) => !success)
+        .filter(([, success]) => !success)
         .map(([name]) => name);
 
       if (failedProviders.length === this.config.providers.length) {
-        throw new Error("All providers failed");
+        throw new Error("All providers failed verification");
       } else if (failedProviders.length > 0) {
-        this.logger.warn("Some providers failed", {
+        this.logger.warn("Some providers failed verification", {
           failed: failedProviders,
         });
       }
 
-      // Init queue manager
+      // Queue manager — increments stats around each delivery.
       this.queueManager = new QueueManager(
         this.config,
         async (emailData) => {
@@ -92,16 +93,35 @@ class SMTPLoadBalancer {
             return result;
           } catch (error) {
             if (error.provider) {
-              this.statsManager.incrementError(error.provider);
+              this.statsManager.incrementError(error.provider, error);
             }
             throw error;
           }
         },
         this.logger,
       );
-      this.logger.info("Queue manager OK");
 
-      // Start SMTP server
+      // Clear orphaned attachment spool directories from past crashes.
+      this.queueManager.attachments
+        .sweep()
+        .catch((err) =>
+          this.logger.warn("Attachment sweep failed", { error: err.message }),
+        );
+
+      // Warm the stats cache before accepting mail (smtp2go needs it for
+      // quota-aware routing).
+      if (this.config.mode === "smtp2go") {
+        try {
+          await this.statsManager.getStats();
+          this.logger.info("Initial SMTP2GO stats loaded");
+        } catch (err) {
+          this.logger.error("Initial stats fetch failed", {
+            error: err.message,
+          });
+        }
+      }
+
+      // Start the inbound SMTP server.
       this.smtpServer = new IncomingSMTPServer(
         this.config,
         this.queueManager,
@@ -109,40 +129,30 @@ class SMTPLoadBalancer {
       );
       this.smtpServer.start();
 
-      this.logger.info("SMTP server OK", {
-        serverPort: this.config.server.port,
-        providers: this.config.providers.map((p) => p.name),
-      });
-
-      // Start API Server
+      // Start the API/dashboard server.
       this.apiServer = new ApiServer(
         this.config,
         this.statsManager,
         this.loadBalancer,
+        this.queueManager,
         this.logger,
       );
       this.apiServer.start();
 
-      // Setup Polling for SMTP2GO mode
+      // Periodic stats polling for smtp2go mode.
       if (this.config.mode === "smtp2go") {
-        const POLLING_INTERVAL = 5 * 60 * 1000; // 5 min
-        this.logger.info("Starting SMTP2GO stats polling...");
-        // Initial fetch
-        this.statsManager.getStats().catch((err) => {
-          this.logger.error("Initial stats fetch failed", {
-            error: err.message,
-          });
-        });
-
-        setInterval(() => {
+        const interval =
+          this.config.smtp2go?.pollIntervalMs || 5 * 60 * 1000;
+        this.logger.info("Starting SMTP2GO stats polling", { interval });
+        this.pollTimer = setInterval(() => {
           this.statsManager.getStats().catch((err) => {
             this.logger.error("Stats polling failed", { error: err.message });
           });
-        }, POLLING_INTERVAL);
+        }, interval);
       }
 
-      // Shutdown handlers
       this.setupGracefulShutdown();
+      this.logger.info("SMTP Load Balancer is running");
     } catch (error) {
       if (this.logger) {
         this.logger.error("Failed to start", {
@@ -158,71 +168,50 @@ class SMTPLoadBalancer {
 
   setupGracefulShutdown() {
     const shutdown = async (signal) => {
-      if (this.isShuttingDown) {
-        return;
-      }
-
+      if (this.isShuttingDown) return;
       this.isShuttingDown = true;
       this.logger.info(`Received ${signal}, shutting down`);
 
       try {
-        // Stop API Server
-        if (this.apiServer) {
-          this.apiServer.stop();
-        }
+        if (this.pollTimer) clearInterval(this.pollTimer);
+        if (this.apiServer) this.apiServer.stop();
 
-        // Stop SMTP server
-        if (this.smtpServer) {
-          await this.smtpServer.stop();
-        }
+        // Stop accepting new mail.
+        if (this.smtpServer) await this.smtpServer.stop();
 
-        // Pause queue
+        // Pause the queue and let in-flight deliveries settle.
         if (this.queueManager) {
           this.queueManager.pause();
-        }
-
-        // Wait for in-flight emails
-        this.logger.info("Waiting for in-flight emails");
-        await new Promise((resolve) => setTimeout(resolve, 5000));
-
-        // Shutdown queue
-        if (this.queueManager) {
+          this.logger.info("Waiting for in-flight deliveries...");
+          await new Promise((resolve) => setTimeout(resolve, 5000));
           await this.queueManager.shutdown();
         }
 
-        // Close SMTP client
-        if (this.smtpClient) {
-          await this.smtpClient.closeAllTransports();
-        }
+        if (this.smtpClient) await this.smtpClient.closeAllTransports();
 
-        this.logger.info("Shut down");
+        this.logger.info("Shutdown complete");
         process.exit(0);
       } catch (error) {
-        this.logger.error("Error during shutdown:", {
-          error: error.message,
-        });
+        this.logger.error("Error during shutdown", { error: error.message });
         process.exit(1);
       }
     };
 
-    // Handle signals
     process.on("SIGTERM", () => shutdown("SIGTERM"));
     process.on("SIGINT", () => shutdown("SIGINT"));
 
-    // Handle exceptions
     process.on("uncaughtException", (error) => {
-      this.logger.error("Exception:", {
+      this.logger.error("Uncaught exception", {
         error: error.message,
         stack: error.stack,
       });
       shutdown("uncaughtException");
     });
 
-    // Handle promise rejections
-    process.on("unhandledRejection", (reason, promise) => {
-      this.logger.error("Promise rejection:", {
-        reason,
-        promise,
+    process.on("unhandledRejection", (reason) => {
+      this.logger.error("Unhandled promise rejection", {
+        reason: reason instanceof Error ? reason.message : String(reason),
+        stack: reason instanceof Error ? reason.stack : undefined,
       });
     });
   }
@@ -233,13 +222,11 @@ class SMTPLoadBalancer {
       queue: this.queueManager?.getStats(),
       loadBalancer: {
         providers: this.loadBalancer?.getProviderCount(),
-        currentIndex: this.loadBalancer?.getCurrentIndex(),
       },
     };
   }
 }
 
-// Start
 const app = new SMTPLoadBalancer();
 app.init().catch((error) => {
   console.error("Fatal error:", error);

@@ -1,11 +1,18 @@
-import { getProvider, getProviderCount } from "./config-loader.js";
-
+/**
+ * LoadBalancer selects which upstream provider handles each delivery.
+ *
+ *  - generic mode: plain round-robin across all providers.
+ *  - smtp2go mode: delegates to the quota-aware StatsManager, which reserves
+ *    a slot on the chosen provider. Returns null when every provider is
+ *    exhausted / rate-limited / cooling down so the caller can back off.
+ */
 export class LoadBalancer {
   constructor(config, statsManager) {
     this.config = config;
     this.statsManager = statsManager;
+    this.mode = config.mode || "generic";
     this.currentIndex = 0;
-    this.providerCount = getProviderCount(config);
+    this.providerCount = config.providers.length;
 
     if (this.providerCount === 0) {
       throw new Error("No providers configured");
@@ -13,23 +20,15 @@ export class LoadBalancer {
   }
 
   getNextProvider() {
-    // Try to get best provider from stats manager (if in smtp2go mode)
-    if (this.statsManager) {
-      const bestName = this.statsManager.getBestProvider();
-      if (bestName) {
-        const provider = this.getProviderByName(bestName);
-        if (provider) {
-          return provider;
-        }
-      }
+    if (this.mode === "smtp2go") {
+      const name = this.statsManager.getBestProvider();
+      if (!name) return null; // all providers unavailable — caller retries
+      return this.getProviderByName(name);
     }
 
-    // Fallback to Round Robin
-    const provider = getProvider(this.config, this.currentIndex);
-
-    // Move to next provider
+    // Generic mode: round-robin
+    const provider = this.config.providers[this.currentIndex];
     this.currentIndex = (this.currentIndex + 1) % this.providerCount;
-
     return provider;
   }
 
@@ -50,37 +49,20 @@ export class LoadBalancer {
   }
 
   /**
-   * Peek at the next N providers that would be selected without advancing the index.
-   * In smtp2go mode, returns providers sorted by remaining quota (best first).
-   * In generic mode, returns round-robin sequence from current position.
+   * Peek at the next N providers without advancing state.
+   * smtp2go: ranked by remaining quota. generic: round-robin sequence.
    */
   peekNextProviders(count = 5) {
+    if (this.mode === "smtp2go") {
+      return this.statsManager.getRankedProviders().slice(0, count);
+    }
+
     const result = [];
-
-    // Check if we're in smtp2go mode
-    if (this.statsManager) {
-      const bestName = this.statsManager.getBestProvider();
-      if (bestName) {
-        // SMTP2GO mode: Get all providers sorted by remaining quota
-        const sortedProviders = this.statsManager.getProvidersSortedByQuota();
-        for (let i = 0; i < count && i < sortedProviders.length; i++) {
-          result.push(sortedProviders[i % sortedProviders.length]);
-        }
-        // If we got providers, return them
-        if (result.length > 0) {
-          return result;
-        }
-      }
-    }
-
-    // Generic mode (Round Robin): simulate next N selections
-    let tempIndex = this.currentIndex;
+    let idx = this.currentIndex;
     for (let i = 0; i < count; i++) {
-      const provider = getProvider(this.config, tempIndex);
-      result.push(provider.name);
-      tempIndex = (tempIndex + 1) % this.providerCount;
+      result.push(this.config.providers[idx].name);
+      idx = (idx + 1) % this.providerCount;
     }
-
     return result;
   }
 

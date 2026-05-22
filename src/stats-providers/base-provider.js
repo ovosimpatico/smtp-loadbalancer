@@ -19,8 +19,9 @@ export class BaseStatsProvider {
   /**
    * Increment error counter for a provider.
    * @param {string} providerName - Name of the provider
+   * @param {Error}  [error]      - The delivery error (used for cooldown logic)
    */
-  incrementError(providerName) {
+  incrementError(providerName, error) {
     throw new Error("incrementError() must be implemented by subclass");
   }
 
@@ -33,10 +34,19 @@ export class BaseStatsProvider {
   }
 
   /**
-   * Get the best provider for load balancing.
-   * @returns {string|null} Provider name or null to use default Round Robin
+   * Select the best provider for the next delivery. Implementations that
+   * track quota may "reserve" the slot (count it as in-flight) here.
+   * @returns {string|null} Provider name, or null to fall back / signal "none".
    */
   getBestProvider() {
     throw new Error("getBestProvider() must be implemented by subclass");
+  }
+
+  /**
+   * Read-only ranking of eligible providers (best first). Does NOT reserve.
+   * @returns {string[]}
+   */
+  getRankedProviders() {
+    return [];
   }
 }

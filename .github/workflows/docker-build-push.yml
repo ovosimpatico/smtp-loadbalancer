@@ -5,11 +5,37 @@ on:
     branches: [ main ]
     tags:
         - 'v*'
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
-  build-and-push:
+  test:
     runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '24'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run tests
+      run: npm test
+
+    - name: Audit dependencies
+      run: npm audit --omit=dev --audit-level=high
+      continue-on-error: true
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    # Only publish images on pushes to main / tags, not on pull requests.
+    if: github.event_name != 'pull_request'
     permissions:
       contents: read
       packages: write
@@ -48,3 +74,12 @@ jobs:
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
+
+    - name: Scan image for vulnerabilities
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ghcr.io/${{ github.repository }}:latest
+        format: table
+        ignore-unfixed: true
+        severity: HIGH,CRITICAL
+      continue-on-error: true

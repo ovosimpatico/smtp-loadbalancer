@@ -7,472 +7,446 @@
     <title>SMTP Load Balancer</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        :root {
+            --bg: hsl(222.2 84% 4.9%);
+            --card: hsl(222.2 47% 7%);
+            --border: hsl(217.2 32.6% 17.5%);
+            --border-hover: hsl(217.2 32.6% 27.5%);
+            --fg: hsl(210 40% 98%);
+            --muted: hsl(215 20.2% 65.1%);
+            --green: hsl(142.1 76.2% 41%);
+            --red: hsl(0 84.2% 60.2%);
+            --amber: hsl(38 92% 50%);
+            --blue: hsl(217 91% 60%);
         }
 
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
-            background-color: hsl(222.2 84% 4.9%);
-            color: hsl(210 40% 98%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background-color: var(--bg);
+            color: var(--fg);
             min-height: 100vh;
             padding: 2rem;
         }
 
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-        }
+        .container { max-width: 1500px; margin: 0 auto; }
 
-        h1 {
-            font-size: 1.875rem;
-            font-weight: 600;
-            letter-spacing: -0.025em;
-            margin-bottom: 0.5rem;
-        }
-
-        .subtitle {
-            font-size: 0.875rem;
-            color: hsl(215 20.2% 65.1%);
-        }
-
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, 360px);
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-        }
-
-        .card {
-            background-color: hsl(222.2 84% 4.9%);
-            border: 1px solid hsl(217.2 32.6% 17.5%);
-            border-radius: 0.75rem;
-            padding: 1.5rem;
-            transition: all 0.2s ease;
-        }
-
-        .card:hover {
-            border-color: hsl(217.2 32.6% 27.5%);
-            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
-        }
-
-        .card-header {
-            font-size: 0.875rem;
-            font-weight: 600;
-            margin-bottom: 1.5rem;
-            color: hsl(210 40% 98%);
+        header {
             display: flex;
-            align-items: center;
+            align-items: baseline;
             justify-content: space-between;
-        }
-
-        .chart-container {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 1.5rem;
-            margin-bottom: 1.25rem;
-        }
-
-        .chart-section {
-            position: relative;
-        }
-
-        .daily-section {
-            order: 1;
-        }
-
-        .monthly-section {
-            order: 2;
-        }
-
-        .chart-bar {
-            height: 8px !important;
-            border-radius: 9999px;
-            overflow: hidden;
-        }
-
-        .chart-pie {
-            height: 160px !important;
-        }
-
-        .chart-label {
-            font-size: 0.75rem;
-            font-weight: 500;
-            color: hsl(210 40% 98%);
-            margin-bottom: 0.5rem;
-        }
-
-        .chart-sublabel {
-            font-size: 0.625rem;
-            color: hsl(215 20.2% 65.1%);
-            font-weight: 400;
-        }
-
-        .info-grid {
-            display: grid;
-            grid-template-columns: 1fr;
+            flex-wrap: wrap;
             gap: 0.5rem;
+            margin-bottom: 1.5rem;
         }
 
-        .info-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.5rem 0;
-            border-bottom: 1px solid hsl(217.2 32.6% 17.5%);
-        }
-
-        .info-item:last-child {
-            border-bottom: none;
-        }
-
-        .info-label {
-            font-size: 0.75rem;
-            color: hsl(215 20.2% 65.1%);
-            font-weight: 500;
-        }
-
-        .info-value {
-            font-size: 0.875rem;
-            color: hsl(210 40% 98%);
-            font-weight: 600;
-        }
-
-        .footer {
-            text-align: center;
-            color: hsl(215 20.2% 65.1%);
-            font-size: 0.75rem;
-            margin-top: 2rem;
-        }
-
-        .loading {
-            text-align: center;
-            color: hsl(215 20.2% 65.1%);
-            padding: 3rem;
-        }
-
-        .error {
-            background-color: hsl(0 62.8% 30.6%);
-            color: hsl(210 40% 98%);
-            padding: 1rem;
-            border-radius: 0.5rem;
-            text-align: center;
-            margin: 1rem 0;
-            font-size: 0.875rem;
-        }
+        h1 { font-size: 1.6rem; font-weight: 600; letter-spacing: -0.025em; }
+        h1 .mode { font-size: 0.7rem; vertical-align: middle; }
+        .subtitle { font-size: 0.8rem; color: var(--muted); }
 
         .badge {
             display: inline-block;
-            padding: 0.125rem 0.5rem;
-            font-size: 0.75rem;
-            font-weight: 500;
-            border-radius: 0.25rem;
-            background-color: hsl(217.2 32.6% 17.5%);
-            color: hsl(210 40% 98%);
-            margin-left: 0.5rem;
-        }
-
-        .next-section {
-            background-color: hsl(222.2 84% 4.9%);
-            border: 1px solid hsl(217.2 32.6% 17.5%);
-            border-radius: 0.5rem;
-            padding: 1.5rem;
-            margin-bottom: 2rem;
-        }
-
-        .next-title {
-            font-size: 0.875rem;
+            padding: 0.15rem 0.55rem;
+            font-size: 0.7rem;
             font-weight: 600;
-            margin-bottom: 1rem;
-            color: hsl(210 40% 98%);
+            border-radius: 0.35rem;
+            background-color: var(--border);
+            color: var(--fg);
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        .badge.ok { background-color: hsl(142.1 70% 20%); color: var(--green); }
+        .badge.warn { background-color: hsl(38 70% 18%); color: var(--amber); }
+        .badge.bad { background-color: hsl(0 62% 22%); color: var(--red); }
+
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .summary .tile {
+            background-color: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 0.6rem;
+            padding: 1rem 1.1rem;
+        }
+        .tile .tile-label {
+            font-size: 0.68rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+        }
+        .tile .tile-value { font-size: 1.5rem; font-weight: 700; margin-top: 0.3rem; }
+        .tile .tile-sub { font-size: 0.7rem; color: var(--muted); margin-top: 0.15rem; }
+
+        .section-title {
+            font-size: 0.78rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--muted);
+            margin: 1.75rem 0 0.85rem;
         }
 
-        .next-list {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-        }
-
+        .next-list { display: flex; gap: 0.5rem; flex-wrap: wrap; }
         .next-item {
-            background-color: hsl(217.2 32.6% 17.5%);
-            padding: 0.75rem;
-            /* Changed padding */
-            border-radius: 0.375rem;
-            font-size: 0.875rem;
+            background-color: var(--border);
+            padding: 0.5rem 0.8rem;
+            border-radius: 0.4rem;
+            font-size: 0.8rem;
             font-weight: 500;
-            color: hsl(210 40% 98%);
-            transition: background-color 0.2s;
-            /* Added transition */
+        }
+        .next-item:first-child { background-color: var(--green); color: var(--bg); font-weight: 700; }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(370px, 1fr));
+            gap: 1.25rem;
         }
 
-        .next-item:hover {
-            /* Added hover effect */
-            background-color: hsl(217.2 32.6% 20%);
+        .card {
+            background-color: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 1.35rem;
+            transition: border-color 0.2s ease;
         }
+        .card:hover { border-color: var(--border-hover); }
 
-        .next-item:first-child {
-            background-color: hsl(142.1 76.2% 36.3%);
-            color: hsl(222.2 84% 4.9%);
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
         }
+        .card-header .name { font-size: 0.95rem; font-weight: 600; }
+
+        .chart-block { margin-bottom: 0.5rem; }
+        .chart-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.72rem;
+            font-weight: 500;
+            margin-bottom: 0.35rem;
+        }
+        .chart-label .muted { color: var(--muted); font-weight: 400; }
+        .bar-canvas { height: 10px !important; }
+        .pie-wrap { height: 150px; position: relative; margin: 0.4rem 0; }
+
+        .metric-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.4rem 1rem;
+            margin-top: 0.9rem;
+            padding-top: 0.85rem;
+            border-top: 1px solid var(--border);
+        }
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            font-size: 0.78rem;
+        }
+        .metric .m-label { color: var(--muted); }
+        .metric .m-value { font-weight: 600; }
+        .m-value.danger { color: var(--red); }
+        .m-value.warn { color: var(--amber); }
+        .m-value.good { color: var(--green); }
+
+        .footer {
+            text-align: center;
+            color: var(--muted);
+            font-size: 0.72rem;
+            margin-top: 2.5rem;
+        }
+        .loading { text-align: center; color: var(--muted); padding: 4rem; }
+        .error {
+            background-color: hsl(0 62.8% 22%);
+            color: var(--fg);
+            padding: 0.9rem 1rem;
+            border-radius: 0.5rem;
+            text-align: center;
+            margin: 1rem 0;
+            font-size: 0.85rem;
+        }
+        .card .error { margin: 0; }
     </style>
 </head>
 
 <body>
     <div class="container">
-        <div id="loading" class="loading">Loading...</div>
-        <div id="error" class="error" style="display: none;"></div>
+        <header>
+            <h1>SMTP Load Balancer <span id="modeBadge" class="badge mode">—</span></h1>
+            <div class="subtitle">Auto-refresh 30s · Updated <span id="lastUpdate">—</span></div>
+        </header>
 
-        <div id="next-section" class="next-section" style="display: none;">
-            <div class="next-title">Next 5 Providers (Send Order)</div>
+        <div id="loading" class="loading">Loading…</div>
+        <div id="error" class="error" style="display:none;"></div>
+        <div id="content" style="display:none;">
+            <div id="summary" class="summary"></div>
+
+            <div class="section-title">Next providers (send order)</div>
             <div id="next-list" class="next-list"></div>
+
+            <div class="section-title">Providers</div>
+            <div id="stats-grid" class="stats-grid"></div>
         </div>
 
-        <div id="stats-grid" class="stats-grid"></div>
-
-        <div class="footer">
-            Auto-refresh: 30s • Last update: <span id="lastUpdate">-</span>
-        </div>
+        <div class="footer">SMTP Load Balancer · open-source AGPLv3</div>
     </div>
 
     <script>
         const charts = {};
+        const COLOR = {
+            used: 'hsl(217 91% 60%)',
+            free: 'hsl(217.2 32.6% 20%)',
+            green: 'hsl(142.1 76.2% 41%)',
+            red: 'hsl(0 84.2% 60.2%)',
+            amber: 'hsl(38 92% 50%)',
+        };
+
+        function safeId(name) { return name.replace(/[^a-zA-Z0-9]/g, '-'); }
+        function num(n) { return (n || 0).toLocaleString(); }
+        function pct(n) { return (n || 0).toFixed(1) + '%'; }
 
         async function fetchStats() {
             try {
-                const response = await fetch('/stats');
-                if (!response.ok) throw new Error('Failed to fetch stats');
-                const data = await response.json();
+                const res = await fetch('/stats', { headers: { 'Accept': 'application/json' } });
+                if (!res.ok) throw new Error('Failed to fetch stats (' + res.status + ')');
+                const data = await res.json();
 
-                // Handle new response format
-                const stats = data.providers || data; // Backwards compatible
-                const nextProviders = data.next || [];
-
-                displayStats(stats);
-                displayNextProviders(nextProviders);
-
+                render(data);
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('error').style.display = 'none';
+                document.getElementById('content').style.display = 'block';
                 document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
-            } catch (error) {
+            } catch (err) {
                 document.getElementById('loading').style.display = 'none';
-                document.getElementById('error').style.display = 'block';
-                document.getElementById('error').textContent = error.message;
+                const e = document.getElementById('error');
+                e.style.display = 'block';
+                e.textContent = err.message;
             }
         }
 
-        function displayNextProviders(nextProviders) {
-            const section = document.getElementById('next-section');
-            const list = document.getElementById('next-list');
+        function render(data) {
+            const mode = data.mode || 'generic';
+            const modeBadge = document.getElementById('modeBadge');
+            modeBadge.textContent = mode;
+            modeBadge.className = 'badge mode ' + (mode === 'smtp2go' ? 'ok' : '');
 
-            if (!nextProviders || nextProviders.length === 0) {
-                section.style.display = 'none';
-                return;
+            renderSummary(mode, data.providers || {}, data.queue || {});
+            renderNext(data.next || []);
+            renderProviders(mode, data.providers || {});
+        }
+
+        function renderSummary(mode, providers, queue) {
+            const list = Object.values(providers);
+            const tiles = [];
+            const m = queue.metrics || {};
+
+            if (mode === 'smtp2go') {
+                const dailySent = list.reduce((a, p) => a + (p.daily_sent || 0), 0);
+                const dailyCap = list.reduce((a, p) => a + (p.daily_limit || 0), 0);
+                const dailyLeft = list.reduce((a, p) => a + (p.daily_remaining || 0), 0);
+                const monthLeft = list.reduce((a, p) => a + (p.cycle_remaining || 0), 0);
+                const hardB = list.reduce((a, p) => a + (p.hard_bounces || 0), 0);
+                const softB = list.reduce((a, p) => a + (p.soft_bounces || 0), 0);
+                const spam = list.reduce((a, p) => a + (p.spam_count || 0), 0);
+                tiles.push(tile('Daily sent', num(dailySent), 'of ' + num(dailyCap) + ' capacity'));
+                tiles.push(tile('Daily remaining', num(dailyLeft), 'across all accounts'));
+                tiles.push(tile('Monthly remaining', num(monthLeft), 'cycle quota left'));
+                tiles.push(tile('Bounces', num(hardB + softB), num(hardB) + ' hard · ' + num(softB) + ' soft'));
+                tiles.push(tile('Spam reports', num(spam), 'flagged by SMTP2GO'));
+            } else {
+                const sent = list.reduce((a, p) => a + (p.sent || 0), 0);
+                const errs = list.reduce((a, p) => a + (p.errors || 0), 0);
+                tiles.push(tile('Total sent', num(sent), 'since start'));
+                tiles.push(tile('Total errors', num(errs), 'delivery failures'));
             }
 
-            section.style.display = 'block';
-            list.innerHTML = nextProviders.map((provider, index) =>
-                `<div class="next-item">${index + 1}. ${provider}</div>`
+            tiles.push(tile('Queue', num(queue.length), num(queue.running) + ' delivering now'));
+            tiles.push(tile('Delivered', num(m.delivered), num(m.retried) + ' retries'));
+            const dl = queue.deadLetterCount || 0;
+            tiles.push(tile('Dead-lettered', num(dl), 'undeliverable', dl > 0 ? 'bad' : null));
+
+            document.getElementById('summary').innerHTML = tiles.join('');
+        }
+
+        function tile(label, value, sub, badgeClass) {
+            const badge = badgeClass ? ' <span class="badge ' + badgeClass + '">!</span>' : '';
+            return '<div class="tile"><div class="tile-label">' + label + '</div>' +
+                '<div class="tile-value">' + value + badge + '</div>' +
+                '<div class="tile-sub">' + (sub || '') + '</div></div>';
+        }
+
+        function renderNext(next) {
+            const el = document.getElementById('next-list');
+            if (!next.length) {
+                el.innerHTML = '<div class="next-item">No provider currently available</div>';
+                return;
+            }
+            el.innerHTML = next.map((n, i) =>
+                '<div class="next-item">' + (i + 1) + '. ' + escapeHtml(n) + '</div>'
             ).join('');
         }
 
-        function displayStats(stats) {
+        function statusBadge(status) {
+            const map = {
+                'ok': ['ok', 'OK'],
+                'cooldown': ['warn', 'Cooldown'],
+                'rate-limited': ['warn', 'Rate limited'],
+                'daily-exhausted': ['bad', 'Daily full'],
+                'monthly-exhausted': ['bad', 'Monthly full'],
+                'error': ['bad', 'Error'],
+            };
+            const [cls, text] = map[status] || ['', status || 'unknown'];
+            return '<span class="badge ' + cls + '">' + text + '</span>';
+        }
+
+        function renderProviders(mode, providers) {
             const grid = document.getElementById('stats-grid');
+            const seen = new Set();
 
-            Object.entries(stats).forEach(([name, data]) => {
-                let cardId = 'card-' + name.replace(/[^a-zA-Z0-9]/g, '-');
-                let card = document.getElementById(cardId);
-
+            Object.entries(providers).forEach(([name, data]) => {
+                const id = 'card-' + safeId(name);
+                seen.add(id);
+                let card = document.getElementById(id);
                 if (!card) {
                     card = document.createElement('div');
-                    card.id = cardId;
+                    card.id = id;
                     card.className = 'card';
                     grid.appendChild(card);
                 }
-
-                if (data.error) {
-                    card.innerHTML = `
-                        <div class="card-header">${name}</div>
-                        <div class="error">Error: ${data.error}</div>
-                    `;
-                    return;
-                }
-
-                if (data.type === 'generic') {
-                    renderGenericCard(card, name, data);
-                } else if (data.type === 'smtp2go') {
-                    renderSmtp2goCard(card, name, data);
-                }
+                if (data.type === 'smtp2go') renderSmtp2go(card, name, data);
+                else renderGeneric(card, name, data);
             });
+
+            // Remove cards for providers no longer present.
+            [...grid.children].forEach((c) => { if (!seen.has(c.id)) c.remove(); });
         }
 
-        function renderGenericCard(card, name, data) {
-            const chartId = 'chart-' + name.replace(/[^a-zA-Z0-9]/g, '-');
-
-            card.innerHTML = `
-                <div class="card-header">${name}<span class="badge">generic</span></div>
-                <div class="chart-container">
-                    <canvas id="${chartId}"></canvas>
-                </div>
-                <div class="info-grid">
-                    <div class="info-item">
-                        <div class="info-label">Sent</div>
-                        <div class="info-value">${data.sent || 0}</div>
-                    </div>
-                    <div class="info-item">
-                        <div class="info-label">Errors</div>
-                        <div class="info-value">${data.errors || 0}</div>
-                    </div>
-                </div>
-            `;
-
-            const ctx = document.getElementById(chartId);
-            if (charts[chartId]) {
-                charts[chartId].destroy();
-            }
-
-            charts[chartId] = new Chart(ctx, {
+        function renderGeneric(card, name, data) {
+            const cid = 'chart-' + safeId(name);
+            card.innerHTML =
+                '<div class="card-header"><span class="name">' + escapeHtml(name) + '</span>' +
+                '<span class="badge ok">generic</span></div>' +
+                '<div class="pie-wrap"><canvas id="' + cid + '"></canvas></div>' +
+                '<div class="metric-grid">' +
+                metric('Sent', num(data.sent), 'good') +
+                metric('Errors', num(data.errors), data.errors > 0 ? 'danger' : '') +
+                '</div>';
+            destroy(cid);
+            charts[cid] = new Chart(document.getElementById(cid), {
                 type: 'doughnut',
                 data: {
                     labels: ['Sent', 'Errors'],
                     datasets: [{
                         data: [data.sent || 0, data.errors || 0],
-                        backgroundColor: ['hsl(142.1 76.2% 36.3%)', 'hsl(0 84.2% 60.2%)'],
-                        borderWidth: 0
-                    }]
+                        backgroundColor: [COLOR.green, COLOR.red],
+                        borderWidth: 0,
+                    }],
                 },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: false
-                        }
-                    }
-                }
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } },
             });
         }
 
-        function renderSmtp2goCard(card, name, data) {
-            const chartId = 'chart-' + name.replace(/[^a-zA-Z0-9]/g, '-');
+        function renderSmtp2go(card, name, data) {
+            const cid = 'chart-' + safeId(name);
+            const dailyId = cid + '-daily';
+            const monthlyId = cid + '-monthly';
 
-            const monthlyPercent = data.cycle_percent ? data.cycle_percent.toFixed(1) : '0.0';
-            const dailyPercent = data.daily_percent ? data.daily_percent.toFixed(1) : '0.0';
-
-            card.innerHTML = `
-                <div class="card-header">
-                    <span>${name}</span>
-                    <span class="badge">smtp2go</span>
-                </div>
-                <div class="chart-container">
-                    <div class="chart-section daily-section">
-                        <div class="chart-label">
-                            Daily Usage <span class="chart-sublabel">${data.daily_sent || 0} / ${data.daily_limit || 200}</span>
-                        </div>
-                        <canvas id="${chartId}-daily" class="chart-bar"></canvas>
-                    </div>
-                    <div class="chart-section monthly-section">
-                        <div class="chart-label">
-                            Monthly Usage <span class="chart-sublabel">${data.cycle_used || 0} / ${data.cycle_max || 0}</span>
-                        </div>
-                        <canvas id="${chartId}-monthly" class="chart-pie"></canvas>
-                    </div>
-                </div>
-                <div class="info-grid">
-                    <div class="info-item">
-                        <span class="info-label">Daily Remaining</span>
-                        <span class="info-value">${data.daily_remaining || 0}</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="info-label">Monthly Remaining</span>
-                        <span class="info-value">${data.cycle_remaining || 0}</span>
-                    </div>
-                </div>
-            `;
-
-            // Clean up old charts
-            const dailyChartId = `${chartId}-daily`;
-            const monthlyChartId = `${chartId}-monthly`;
-
-            if (charts[dailyChartId]) charts[dailyChartId].destroy();
-            if (charts[monthlyChartId]) charts[monthlyChartId].destroy();
+            if (data.status === 'error') {
+                card.innerHTML =
+                    '<div class="card-header"><span class="name">' + escapeHtml(name) + '</span>' +
+                    statusBadge('error') + '</div>' +
+                    '<div class="error">' + escapeHtml(data.error || 'Unknown error') + '</div>';
+                destroy(dailyId); destroy(monthlyId);
+                return;
+            }
 
             const dailyUsed = data.daily_sent || 0;
-            const dailyRemaining = data.daily_remaining || 0;
-            const monthlyUsed = data.cycle_used || 0;
-            const monthlyRemaining = data.cycle_remaining || 0;
+            const dailyRem = data.daily_remaining || 0;
+            const monthUsed = data.cycle_used || 0;
+            const monthRem = data.cycle_remaining || 0;
+            const bounceClass = (data.bounce_percent > 5) ? 'danger' : (data.bounce_percent > 1 ? 'warn' : '');
+            const spamClass = (data.spam_percent > 0.1) ? 'danger' : '';
 
-            // Daily Bar Chart
-            const dailyCtx = document.getElementById(dailyChartId);
-            charts[dailyChartId] = new Chart(dailyCtx, {
+            card.innerHTML =
+                '<div class="card-header"><span class="name">' + escapeHtml(name) + '</span>' +
+                statusBadge(data.status) + '</div>' +
+
+                '<div class="chart-block">' +
+                '<div class="chart-label"><span>Daily usage</span>' +
+                '<span class="muted">' + num(dailyUsed) + ' / ' + num(data.daily_limit) + '</span></div>' +
+                '<canvas id="' + dailyId + '" class="bar-canvas"></canvas></div>' +
+
+                '<div class="chart-block">' +
+                '<div class="chart-label"><span>Monthly cycle</span>' +
+                '<span class="muted">' + num(monthUsed) + ' / ' + num(data.cycle_max) + '</span></div>' +
+                '<div class="pie-wrap"><canvas id="' + monthlyId + '"></canvas></div></div>' +
+
+                '<div class="metric-grid">' +
+                metric('Daily remaining', num(dailyRem)) +
+                metric('Monthly remaining', num(monthRem)) +
+                metric('Total emails', num(data.total_emails)) +
+                metric('In flight', num(data.in_flight)) +
+                metric('Hard bounces', num(data.hard_bounces), data.hard_bounces > 0 ? 'danger' : '') +
+                metric('Soft bounces', num(data.soft_bounces), data.soft_bounces > 0 ? 'warn' : '') +
+                metric('Bounce rate', pct(data.bounce_percent), bounceClass) +
+                metric('Spam rate', pct(data.spam_percent), spamClass) +
+                (data.cooldown_until
+                    ? metric('Cooldown until', new Date(data.cooldown_until).toLocaleTimeString(), 'warn')
+                    : '') +
+                '</div>';
+
+            destroy(dailyId);
+            charts[dailyId] = new Chart(document.getElementById(dailyId), {
                 type: 'bar',
                 data: {
                     labels: ['Daily'],
                     datasets: [
-                        {
-                            label: 'Used',
-                            data: [dailyUsed],
-                            backgroundColor: 'hsl(0 84.2% 60.2%)',
-                            borderWidth: 0
-                        },
-                        {
-                            label: 'Remaining',
-                            data: [dailyRemaining],
-                            backgroundColor: 'hsl(142.1 76.2% 36.3%)',
-                            borderWidth: 0
-                        }
-                    ]
+                        { label: 'Used', data: [dailyUsed], backgroundColor: COLOR.used, borderWidth: 0 },
+                        { label: 'Remaining', data: [dailyRem], backgroundColor: COLOR.free, borderWidth: 0 },
+                    ],
                 },
                 options: {
-                    indexAxis: 'y',
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        x: {
-                            stacked: true,
-                            display: false
-                        },
-                        y: {
-                            stacked: true,
-                            display: false
-                        }
-                    },
-                    plugins: {
-                        legend: {
-                            display: false
-                        },
-                        tooltip: {
-                            enabled: true
-                        }
-                    }
-                }
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                    scales: { x: { stacked: true, display: false }, y: { stacked: true, display: false } },
+                    plugins: { legend: { display: false } },
+                },
             });
 
-            // Monthly Pie Chart
-            const monthlyCtx = document.getElementById(monthlyChartId);
-            charts[monthlyChartId] = new Chart(monthlyCtx, {
+            destroy(monthlyId);
+            charts[monthlyId] = new Chart(document.getElementById(monthlyId), {
                 type: 'doughnut',
                 data: {
                     labels: ['Used', 'Remaining'],
                     datasets: [{
-                        data: [monthlyUsed, monthlyRemaining],
-                        backgroundColor: ['hsl(0 84.2% 60.2%)', 'hsl(142.1 76.2% 36.3%)'],
-                        borderWidth: 0
-                    }]
+                        data: [monthUsed, monthRem],
+                        backgroundColor: [COLOR.used, COLOR.green],
+                        borderWidth: 0,
+                    }],
                 },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    aspectRatio: 1,
-                    plugins: {
-                        legend: {
-                            display: false
-                        }
-                    }
-                }
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } },
             });
+        }
+
+        function metric(label, value, cls) {
+            return '<div class="metric"><span class="m-label">' + label + '</span>' +
+                '<span class="m-value ' + (cls || '') + '">' + value + '</span></div>';
+        }
+
+        function destroy(id) {
+            if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+        }
+
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, (c) => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+            }[c]));
         }
 
         fetchStats();

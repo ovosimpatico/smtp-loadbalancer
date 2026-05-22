@@ -2,7 +2,8 @@ import { BaseStatsProvider } from "./base-provider.js";
 
 /**
  * Generic stats provider that maintains internal counters.
- * Uses Round Robin load balancing (returns null from getBestProvider).
+ * Uses round-robin load balancing (returns null from getBestProvider, which
+ * tells the LoadBalancer to use its own round-robin rotation).
  */
 export class GenericStatsProvider extends BaseStatsProvider {
   constructor(config, logger) {
@@ -10,40 +11,27 @@ export class GenericStatsProvider extends BaseStatsProvider {
 
     // Internal counters for each provider
     this.counters = new Map();
-
-    // Initialize counters for all providers
     config.providers.forEach((p) => {
-      this.counters.set(p.name, {
-        sent: 0,
-        errors: 0,
-      });
+      this.counters.set(p.name, { sent: 0, errors: 0 });
     });
   }
 
   incrementSent(providerName) {
     const stats = this.counters.get(providerName);
-    if (stats) {
-      stats.sent++;
-    }
+    if (stats) stats.sent++;
   }
 
   incrementError(providerName) {
     const stats = this.counters.get(providerName);
-    if (stats) {
-      stats.errors++;
-    }
+    if (stats) stats.errors++;
   }
 
   async getStats() {
     const stats = {};
     for (const [name, counter] of this.counters) {
-      stats[name] = {
-        type: "generic",
-        ...counter,
-      };
+      stats[name] = { type: "generic", status: "ok", ...counter };
     }
-
-    // Sort alphabetically by key
+    // Sort alphabetically by key for stable output
     return Object.keys(stats)
       .sort()
       .reduce((sorted, key) => {
@@ -53,7 +41,7 @@ export class GenericStatsProvider extends BaseStatsProvider {
   }
 
   getBestProvider() {
-    // Return null to use Round Robin load balancing
+    // Returning null tells the LoadBalancer to use round-robin.
     return null;
   }
 }

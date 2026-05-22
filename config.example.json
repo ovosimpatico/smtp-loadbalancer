@@ -1,10 +1,30 @@
 {
   "mode": "generic",
   "server": {
+    "host": "0.0.0.0",
     "port": 2525,
     "auth": {
       "user": "admin",
       "pass": "your-secure-password"
+    },
+    "maxMessageSize": 26214400,
+    "maxRecipients": 100,
+    "allowedRecipientDomains": [],
+    "allowInsecureAuth": true,
+    "useXClient": false,
+    "useXForward": false,
+    "trustedProxies": [],
+    "tls": {
+      "key": "",
+      "cert": ""
+    }
+  },
+  "api": {
+    "host": "0.0.0.0",
+    "port": 8080,
+    "auth": {
+      "user": "admin",
+      "pass": "your-dashboard-password"
     }
   },
   "providers": [
@@ -18,7 +38,9 @@
         "user": "your-email@gmail.com",
         "pass": "your-app-password"
       },
-      "from": "your-email@gmail.com"
+      "from": "your-email@gmail.com",
+      "pool": true,
+      "maxConnections": 5
     },
     {
       "name": "SendGrid",
@@ -47,6 +69,21 @@
   ],
   "queue": {
     "maxRetries": 5,
-    "retryDelay": 60000
+    "retryDelay": 60000,
+    "concurrent": 5,
+    "afterProcessDelay": 1
+  },
+  "smtp2go": {
+    "pollIntervalMs": 300000,
+    "apiTimeoutMs": 15000,
+    "dailyReserveRatio": 0.02,
+    "errorCooldownMs": 300000,
+    "timezone": "UTC",
+    "rateLimit": {
+      "maxPerMinute": 0
+    }
+  },
+  "logging": {
+    "redactPII": false
   }
 }

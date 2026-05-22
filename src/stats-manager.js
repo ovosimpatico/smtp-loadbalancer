@@ -11,9 +11,7 @@ export class StatsManager {
     this.logger = logger;
     this.mode = config.mode || "generic";
 
-    // Instantiate the appropriate provider
     this.provider = this._createProvider();
-
     this.logger.info(`Stats provider initialized: ${this.mode}`);
   }
 
@@ -21,10 +19,8 @@ export class StatsManager {
     switch (this.mode) {
       case "generic":
         return new GenericStatsProvider(this.config, this.logger);
-
       case "smtp2go":
         return new Smtp2goStatsProvider(this.config, this.logger);
-
       default:
         throw new Error(`Unknown stats provider mode: ${this.mode}`);
     }
@@ -34,23 +30,28 @@ export class StatsManager {
     this.provider.incrementSent(providerName);
   }
 
-  incrementError(providerName) {
-    this.provider.incrementError(providerName);
+  incrementError(providerName, error) {
+    this.provider.incrementError(providerName, error);
   }
 
   async getStats() {
-    return await this.provider.getStats();
+    return this.provider.getStats();
   }
 
   getBestProvider() {
     return this.provider.getBestProvider();
   }
 
-  getProvidersSortedByQuota() {
-    if (typeof this.provider.getProvidersSortedByQuota === "function") {
-      return this.provider.getProvidersSortedByQuota();
+  getRankedProviders() {
+    if (typeof this.provider.getRankedProviders === "function") {
+      return this.provider.getRankedProviders();
     }
-    // Fallback: return all providers in alphabetical order
-    return this.config.providers.map((p) => p.name).sort();
+    return this.config.providers.map((p) => p.name);
+  }
+
+  releaseReservation(providerName) {
+    if (typeof this.provider.releaseReservation === "function") {
+      this.provider.releaseReservation(providerName);
+    }
   }
 }

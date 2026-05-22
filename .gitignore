@@ -142,3 +142,5 @@ vite.config.ts.timestamp-*
 config.json
 data/
 logs/
+
+smtp2go_dashboard.py

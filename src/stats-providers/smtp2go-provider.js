@@ -173,10 +173,10 @@ export class Smtp2goStatsProvider extends BaseStatsProvider {
   _metrics(p) {
     const api = this.cache.data[p.name] || {};
 
-    // Daily: trust whichever is higher — the local counter (accurate while
-    // running) or the API's today-count (accurate after a restart).
-    const apiDaily = api.daily_api_count ?? 0;
-    const dailyUsed = Math.max(p.dailyCounter, apiDaily) + p.inFlight;
+    // SMTP2GO's stats API has no per-day counter (date filters are ignored),
+    // so daily usage is tracked purely from our local counter, which is
+    // persisted to disk and restored across restarts within the same day.
+    const dailyUsed = p.dailyCounter + p.inFlight;
     const effectiveDailyLimit = Math.max(
       0,
       Math.floor(p.dailyLimit * (1 - this.reserveRatio)),
@@ -201,7 +201,6 @@ export class Smtp2goStatsProvider extends BaseStatsProvider {
     const effectiveRemaining = Math.min(dailyRemaining, monthlyRemaining);
     return {
       api,
-      apiDaily,
       dailyUsed,
       effectiveDailyLimit,
       dailyRemaining,
@@ -305,51 +304,32 @@ export class Smtp2goStatsProvider extends BaseStatsProvider {
       "Content-Type": "application/json",
       "X-Smtp2go-Api-Key": provider.apiKey,
     };
-    const today = this._getCurrentDate();
-    const post = (endpoint, body = {}) =>
-      axios.post(`${SMTP2GO_BASE_URL}${endpoint}`, body, {
-        headers,
-        timeout: this.apiTimeout,
-      });
 
-    const [summaryRes, cycleRes, dailyRes, bouncesRes, spamRes] =
-      await Promise.allSettled([
-        post("/stats/email_summary"),
-        post("/stats/email_cycle"),
-        post("/stats/email_summary", { date_from: today, date_to: today }),
-        post("/stats/email_bounces"),
-        post("/stats/email_spam"),
-      ]);
-
-    // If the two essential calls both fail, treat the provider as errored.
-    if (summaryRes.status === "rejected" && cycleRes.status === "rejected") {
-      throw summaryRes.reason;
-    }
-
-    const body = (res) =>
-      res.status === "fulfilled" ? res.value.data?.data || {} : {};
-    const summary = body(summaryRes);
-    const cycle = body(cycleRes);
-    const daily = body(dailyRes);
-    const bounces = body(bouncesRes);
-    const spam = body(spamRes);
+    // A single email_summary call returns lifetime totals, the current
+    // monthly cycle, and bounce/spam stats — everything the dashboard and
+    // routing need. (SMTP2GO's stats API has no per-day granularity.)
+    const res = await axios.post(
+      `${SMTP2GO_BASE_URL}/stats/email_summary`,
+      {},
+      { headers, timeout: this.apiTimeout },
+    );
+    const d = res.data?.data || {};
 
     return {
       type: "smtp2go",
-      total_emails: summary.email_count || 0,
-      daily_api_count: daily.email_count || 0,
-      cycle_used: cycle.cycle_used || 0,
-      cycle_max: cycle.cycle_max || 0,
-      cycle_remaining: cycle.cycle_remaining ?? null,
+      total_emails: d.email_count || 0,
+      cycle_used: d.cycle_used || 0,
+      cycle_max: d.cycle_max || 0,
+      cycle_remaining: Number.isFinite(d.cycle_remaining)
+        ? d.cycle_remaining
+        : null,
       cycle_percent:
-        cycle.cycle_max > 0
-          ? (cycle.cycle_used / cycle.cycle_max) * 100
-          : 0,
-      hard_bounces: bounces.hardbounces || 0,
-      soft_bounces: bounces.softbounces || 0,
-      bounce_percent: parseFloat(bounces.bounce_percent) || 0,
-      spam_count: spam.spams || 0,
-      spam_percent: parseFloat(spam.spam_percent) || 0,
+        d.cycle_max > 0 ? (d.cycle_used / d.cycle_max) * 100 : 0,
+      hard_bounces: d.hardbounces || 0,
+      soft_bounces: d.softbounces || 0,
+      bounce_percent: parseFloat(d.bounce_percent) || 0,
+      spam_count: d.spam_emails || 0,
+      spam_percent: parseFloat(d.spam_percent) || 0,
     };
   }
 
@@ -410,7 +390,7 @@ export class Smtp2goStatsProvider extends BaseStatsProvider {
       else if (m.monthlyRemaining <= 0) status = "monthly-exhausted";
       else if (!this._rateOk(p, now)) status = "rate-limited";
 
-      const dailySent = Math.max(p.dailyCounter, m.apiDaily);
+      const dailySent = p.dailyCounter;
 
       out[p.name] = {
         type: "smtp2go",

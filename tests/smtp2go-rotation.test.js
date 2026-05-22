@@ -40,7 +40,6 @@ function warmCache(provider, cycleRemaining = 100000) {
       type: "smtp2go",
       cycle_remaining: cycleRemaining,
       cycle_used: 0,
-      daily_api_count: 0,
     };
   }
   provider.cache.data = data;
@@ -95,6 +94,28 @@ test("effective remaining is limited by the monthly cycle", () => {
   warmCache(p, 5); // only 5 left in the monthly cycle
   const m = p._metrics(p.providers.get("P1"));
   assert.equal(m.effectiveRemaining, 5);
+});
+
+test("lifetime email count does not count against the daily limit", () => {
+  // Regression: a heavily-used account (large lifetime total) must not be
+  // treated as daily-exhausted — daily usage is local-only.
+  const p = makeProvider(2);
+  p.cache.data = {
+    P1: {
+      type: "smtp2go",
+      total_emails: 998,
+      email_count: 998,
+      cycle_remaining: 800,
+      cycle_used: 200,
+    },
+    P2: { type: "smtp2go", total_emails: 5, cycle_remaining: 995, cycle_used: 5 },
+  };
+  p.cache.timestamp = Date.now();
+
+  const m = p._metrics(p.providers.get("P1"));
+  assert.equal(m.dailyUsed, 0, "no local sends => daily usage is 0");
+  assert.ok(m.dailyRemaining > 0, "provider must not be daily-exhausted");
+  assert.ok(p.getRankedProviders().includes("P1"));
 });
 
 test("a rate-limit error puts the provider in cooldown", () => {
